@@ -2,6 +2,7 @@
   "expo": {
     "name": "habit-tracker-app",
     "slug": "habit-tracker-app",
+    "homepage": "https://avra911.github.io/Habit-Tracker-App/",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -24,9 +25,7 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "bundler": "metro",
-      "output": "static",
-      "baseUrl": "/Habit-Tracker-App" 
+      "bundler": "metro"
     }
   }
 }
