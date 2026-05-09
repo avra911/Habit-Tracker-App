@@ -4,13 +4,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "expo start",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
-    "web": "expo start --web",
-    "build": "npx expo export -p web",
+    "build": "EXPO_PUBLIC_BASE_URL=/Habit-Tracker-App npx expo export -p web",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "cd dist && git init && git checkout -b gh-pages && git add . && git commit -m 'Fix assets path' && git remote add origin https://github.com/avra911/Habit-Tracker-App.git && git push origin gh-pages --force && cd .."
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
