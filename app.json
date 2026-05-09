@@ -24,7 +24,9 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "output": "static",
+      "baseUrl": "/Habit-Tracker-App" 
     }
   }
 }
