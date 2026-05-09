@@ -23,7 +23,7 @@
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0"
   },
-  "private": true,
+  "private": false,
   "devDependencies": {
     "gh-pages": "^6.3.0"
   }
