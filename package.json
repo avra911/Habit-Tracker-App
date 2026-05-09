@@ -6,7 +6,7 @@
   "scripts": {
     "build": "npx expo export -p web",
     "predeploy": "npm run build",
-    "deploy": "sed -i 's/src=\"\\//src=\"\\/Habit-Tracker-App\\//g' dist/index.html && sed -i 's/href=\"\\//href=\"\\/Habit-Tracker-App\\//g' dist/index.html && cd dist && git init && git checkout -b gh-pages && git add . && git commit -m 'Deploy with path fix' && git remote add origin https://github.com/avra911/Habit-Tracker-App.git && git push origin gh-pages --force && cd .."
+    "deploy": "touch dist/.nojekyll && sed -i 's|src=\"/|src=\"/Habit-Tracker-App/|g' dist/index.html && sed -i 's|href=\"/|href=\"/Habit-Tracker-App/|g' dist/index.html && cd dist && git init && git checkout -b gh-pages && git add . && git commit -m 'Add .nojekyll and fix paths' && git remote add origin https://github.com/avra911/Habit-Tracker-App.git && git push origin gh-pages --force && cd .."
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
