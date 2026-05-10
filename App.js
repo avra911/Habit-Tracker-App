@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
   cell: { width: 32, height: 32, marginLeft: 6, borderRadius: 10, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
   mobileDailyContainer: { width: '100%' },
   stickyTableWrapper: { flexDirection: 'row', borderTopWidth: 1, borderBottomWidth: 1, borderRadius: 16, overflow: 'hidden' },
-  fixedColumn: { width: 110, borderRightWidth: 2, zIndex: 2 },
+  fixedColumn: { width: 160, borderRightWidth: 2, zIndex: 2 },
   fixedHabitRow: { height: 44, justifyContent: 'center', paddingHorizontal: 8, borderBottomWidth: 1 },
   fixedHeaderCell: { height: 32, justifyContent: 'center', paddingHorizontal: 8, borderBottomWidth: 1 },
   fixedHeaderText: { fontSize: 9, fontWeight: '900', color: '#64748b' },
