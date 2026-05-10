@@ -52,6 +52,7 @@ export default function App() {
   const [weeklyHabits, setWeeklyHabits] = useState(Array(6).fill(''));
   const [monthlyHabits, setMonthlyHabits] = useState(Array(6).fill(''));
   const [history, setHistory] = useState({});
+  const [enableCircleView, setEnableCircleView] = useState(false);
 
   const theme = isDarkMode ? darkTheme : lightTheme;
   const today = new Date();
@@ -65,19 +66,27 @@ export default function App() {
   const currentMonthData = history[monthKey] || { daily: {}, weekly: {}, monthly: {} };
 
   useEffect(() => { loadData(); }, []);
-  useEffect(() => { if (!loading) saveData(); }, [dailyHabits, weeklyHabits, monthlyHabits, history, isDarkMode]);
+  useEffect(() => { if (!loading) saveData(); }, [dailyHabits, weeklyHabits, monthlyHabits, history, isDarkMode, enableCircleView]);
+  useEffect(() => {
+    if (!isDesktop && isCurrentMonth && view === 'tracker' && scrollRef.current && !loading) {
+      const scrollPos = Math.max(0, (today.getDate() - 1) * 36 - 100);
+      setTimeout(() => scrollRef.current?.scrollTo({ x: scrollPos, animated: true }), 100);
+    }
+  }, [currentDate, view, isCurrentMonth, loading]);
 
   const loadData = async () => {
     try {
       const hData = await AsyncStorage.getItem('@orbit_v15_habits');
       const histData = await AsyncStorage.getItem('@orbit_v15_history');
       const tData = await AsyncStorage.getItem('@orbit_v15_theme');
+      const cData = await AsyncStorage.getItem('@orbit_v15_circle');
       if (hData) {
         const h = JSON.parse(hData);
         setDailyHabits(h.daily || []); setWeeklyHabits(h.weekly || []); setMonthlyHabits(h.monthly || []);
       }
       if (histData) setHistory(JSON.parse(histData));
       if (tData) setIsDarkMode(JSON.parse(tData));
+      if (cData) setEnableCircleView(JSON.parse(cData));
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -87,6 +96,7 @@ export default function App() {
       await AsyncStorage.setItem('@orbit_v15_habits', JSON.stringify({ daily: dailyHabits, weekly: weeklyHabits, monthly: monthlyHabits }));
       await AsyncStorage.setItem('@orbit_v15_history', JSON.stringify(history));
       await AsyncStorage.setItem('@orbit_v15_theme', JSON.stringify(isDarkMode));
+      await AsyncStorage.setItem('@orbit_v15_circle', JSON.stringify(enableCircleView));
     } catch (e) { console.error(e); }
   };
 
@@ -120,6 +130,15 @@ export default function App() {
           <TouchableOpacity onPress={() => setView('tracker')} style={styles.closeBtn}><Text style={styles.closeBtnText}>Done</Text></TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={styles.settingsScroll}>
+          <View style={[styles.settingsCard, {backgroundColor: theme.card, borderColor: theme.border}]}>
+            <View style={styles.cardHeader}><Text style={[styles.cardTitle, {color: theme.text}]}>Display Options</Text></View>
+            <View style={[styles.modernInputRow, {borderTopColor: theme.border}]}>
+              <Text style={[styles.modernInput, {color: theme.text}]}>Enable Circle View</Text>
+              <TouchableOpacity onPress={() => setEnableCircleView(!enableCircleView)} style={[styles.toggleButton, {backgroundColor: enableCircleView ? habitColors[0] : theme.border}]}>
+                <Text style={styles.toggleText}>{enableCircleView ? '✓' : ''}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
           {[{ t: "Daily Habits", d: dailyHabits, s: setDailyHabits }, { t: "Weekly Goals", d: weeklyHabits, s: setWeeklyHabits }, { t: "Monthly Milestones", d: monthlyHabits, s: setMonthlyHabits }].map((sec, i) => (
             <View key={i} style={[styles.settingsCard, {backgroundColor: theme.card, borderColor: theme.border}]}>
               <View style={styles.cardHeader}><Text style={[styles.cardTitle, {color: theme.text}]}>{sec.t}</Text><TouchableOpacity onPress={() => sec.s([...sec.d, ''])}><Text style={[styles.addIconText, {color: theme.subtext}]}>+</Text></TouchableOpacity></View>
@@ -157,7 +176,7 @@ export default function App() {
 
             <View style={styles.layoutWrapper}>
               <View style={styles.svgColumn}>
-                {isDesktop ? (
+                {isDesktop && enableCircleView ? (
                   <View style={styles.svgContainer}>
                     <Svg viewBox={`0 0 ${svgSize} ${svgSize}`} style={StyleSheet.absoluteFill}>
                       <Defs>
@@ -354,4 +373,6 @@ const styles = StyleSheet.create({
   modernInputRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderTopWidth: 1 },
   modernInput: { flex: 1, fontSize: 16, fontWeight: '700' },
   deleteText: { fontSize: 18, color: '#ef4444', marginLeft: 15, fontWeight: '400' },
+  toggleButton: { width: 44, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginLeft: 12 },
+  toggleText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
 });
