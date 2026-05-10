@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, 
-  useWindowDimensions, SafeAreaView, Platform, StatusBar, ActivityIndicator 
+  useWindowDimensions, SafeAreaView, Platform, StatusBar, ActivityIndicator, Alert, Clipboard
 } from 'react-native';
 import Svg, { Path, Text as SvgText, TextPath, Defs, G, Circle, Line } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { generateSecretKey, getPublicKey, finalizeEvent, relayInit, nip04 } from 'nostr-tools';
 
 // --- MATH HELPERS ---
 const polarToCartesian = (centerX, centerY, radius, angleInDegrees) => {
-  // Clock Hour 0 (12 o'clock) is -90 degrees in standard geometry
   const angleInRadians = (angleInDegrees - 90) * (Math.PI / 180.0);
   return { 
     x: centerX + radius * Math.cos(angleInRadians), 
@@ -53,6 +53,11 @@ export default function App() {
   const [monthlyHabits, setMonthlyHabits] = useState(Array(6).fill(''));
   const [history, setHistory] = useState({});
   const [enableCircleView, setEnableCircleView] = useState(false);
+  const [userPrivkey, setUserPrivkey] = useState(null);
+  const [userPubkey, setUserPubkey] = useState(null);
+  const [enableNostrSync, setEnableNostrSync] = useState(false);
+  const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const [importPrivateKeyInput, setImportPrivateKeyInput] = useState('');
 
   const theme = isDarkMode ? darkTheme : lightTheme;
   const today = new Date();
@@ -66,13 +71,17 @@ export default function App() {
   const currentMonthData = history[monthKey] || { daily: {}, weekly: {}, monthly: {} };
 
   useEffect(() => { loadData(); }, []);
-  useEffect(() => { if (!loading) saveData(); }, [dailyHabits, weeklyHabits, monthlyHabits, history, isDarkMode, enableCircleView]);
+
+  // Sync effect: Trigger listenToNostr whenever sync is enabled OR keys change
   useEffect(() => {
-    if (!isDesktop && isCurrentMonth && view === 'tracker' && scrollRef.current && !loading) {
-      const scrollPos = Math.max(0, (today.getDate() - 1) * 36 - 100);
-      setTimeout(() => scrollRef.current?.scrollTo({ x: scrollPos, animated: true }), 100);
+    if (enableNostrSync && userPrivkey && userPubkey) {
+      listenToNostr();
     }
-  }, [currentDate, view, isCurrentMonth, loading]);
+  }, [enableNostrSync, userPrivkey, userPubkey]);
+
+  useEffect(() => { 
+    if (!loading) saveData(); 
+  }, [dailyHabits, weeklyHabits, monthlyHabits, history, isDarkMode, enableCircleView, enableNostrSync]);
 
   const loadData = async () => {
     try {
@@ -80,6 +89,9 @@ export default function App() {
       const histData = await AsyncStorage.getItem('@orbit_v15_history');
       const tData = await AsyncStorage.getItem('@orbit_v15_theme');
       const cData = await AsyncStorage.getItem('@orbit_v15_circle');
+      const nData = await AsyncStorage.getItem('@orbit_v15_nostr_sync');
+      let privkeyHex = await AsyncStorage.getItem('@orbit_v15_nostr_privkey');
+      
       if (hData) {
         const h = JSON.parse(hData);
         setDailyHabits(h.daily || []); setWeeklyHabits(h.weekly || []); setMonthlyHabits(h.monthly || []);
@@ -87,7 +99,18 @@ export default function App() {
       if (histData) setHistory(JSON.parse(histData));
       if (tData) setIsDarkMode(JSON.parse(tData));
       if (cData) setEnableCircleView(JSON.parse(cData));
-    } catch (e) { console.error(e); }
+      if (nData) setEnableNostrSync(JSON.parse(nData));
+      
+      if (!privkeyHex) {
+        const newSecretKey = generateSecretKey();
+        privkeyHex = privkeyToHex(newSecretKey);
+        await AsyncStorage.setItem('@orbit_v15_nostr_privkey', privkeyHex);
+      }
+      
+      const privkey = hexToPrivkey(privkeyHex);
+      setUserPrivkey(privkey);
+      setUserPubkey(getPublicKey(privkey));
+    } catch (e) { console.error('❌ Error loading data:', e); }
     finally { setLoading(false); }
   };
 
@@ -97,7 +120,71 @@ export default function App() {
       await AsyncStorage.setItem('@orbit_v15_history', JSON.stringify(history));
       await AsyncStorage.setItem('@orbit_v15_theme', JSON.stringify(isDarkMode));
       await AsyncStorage.setItem('@orbit_v15_circle', JSON.stringify(enableCircleView));
+      await AsyncStorage.setItem('@orbit_v15_nostr_sync', JSON.stringify(enableNostrSync));
+      if (enableNostrSync && userPrivkey) {
+        await publishToNostr();
+      }
     } catch (e) { console.error(e); }
+  };
+
+  const publishToNostr = async () => {
+    if (!userPrivkey || !userPubkey) return;
+    try {
+      const payloadString = JSON.stringify({ dailyHabits, weeklyHabits, monthlyHabits, history });
+      const encryptedContent = await nip04.encrypt(userPrivkey, userPubkey, payloadString);
+
+      const event = finalizeEvent({
+        kind: 30000,
+        content: encryptedContent,
+        tags: [['d', 'habit-tracker-sync']],
+        created_at: Math.floor(Date.now() / 1000),
+      }, userPrivkey);
+
+      const relays = ['wss://nos.lol', 'wss://relay.damus.io', 'wss://relay.nostr.band'];
+      relays.forEach(async (relayUrl) => {
+        try {
+          const r = await relayInit(relayUrl);
+          await r.connect();
+          await r.publish(event);
+          r.close();
+        } catch (e) {}
+      });
+    } catch (e) { console.error('Nostr publish error:', e); }
+  };
+
+  const listenToNostr = async () => {
+    if (!userPubkey || !userPrivkey) return;
+    const relays = ['wss://nos.lol', 'wss://relay.damus.io'];
+    
+    relays.forEach(async (relayUrl) => {
+      try {
+        const relay = await relayInit(relayUrl);
+        await relay.connect();
+        
+        relay.subscribe(
+          [{ authors: [userPubkey], kinds: [30000], '#d': ['habit-tracker-sync'], limit: 1 }],
+          {
+            onevent: async (event) => {
+              console.log("CONEXIUNE REUȘITĂ: Am primit un eveniment de pe Nostr!");
+              try {
+                const decrypted = await nip04.decrypt(userPrivkey, userPubkey, event.content);
+                console.log("DATE DECRIPTATE:", decrypted);
+                
+                const data = JSON.parse(decrypted);
+                // Aici suprascriem starea locală cu ce am primit de pe releu
+                setDailyHabits(data.dailyHabits);
+                setHistory(data.history);
+                
+                // OPȚIONAL: Salvăm imediat în Local Storage ce am primit de pe Nostr
+                await AsyncStorage.setItem('@orbit_v15_history', JSON.stringify(data.history));
+              } catch (e) {
+                console.log("EROARE LA DECRIPTARE:", e);
+              }
+            }
+          }
+        );
+      } catch (e) {}
+    });
   };
 
   const updateHistory = (type, key, value) => {
@@ -113,6 +200,68 @@ export default function App() {
       next.setMonth(next.getMonth() + offset);
       return next > today && offset > 0 ? prev : next;
     });
+  };
+
+  const copyToClipboard = async (text) => {
+    try {
+      if (Platform.OS === 'web') {
+        // Verificăm dacă API-ul modern este disponibil
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          Alert.alert('Copied!', 'Key copied to clipboard');
+        } else {
+          // Fallback: Metoda veche folosind un element de tip textarea (hacky dar funcționează peste tot)
+          const textArea = document.createElement("textarea");
+          textArea.value = text;
+          document.body.appendChild(textArea);
+          textArea.select();
+          try {
+            document.execCommand('copy');
+            Alert.alert('Copied!', 'Key copied to clipboard (legacy)');
+          } catch (err) {
+            Alert.alert('Error', 'Manual copy required: ' + text);
+          }
+          document.body.removeChild(textArea);
+        }
+      } else {
+        // Pentru Mobile (iOS/Android)
+        await Clipboard.setString(text);
+        Alert.alert('Copied!', 'Key copied to clipboard');
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to copy to clipboard');
+    }
+  };
+
+  const privkeyToHex = (privkey) => {
+    return Array.from(privkey).map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  const hexToPrivkey = (hex) => {
+    return new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+  };
+
+  const importPrivateKey = async () => {
+    const input = importPrivateKeyInput.trim();
+    if (input.length !== 64) {
+      Alert.alert('Error', 'Invalid key format (must be 64 hex characters)');
+      return;
+    }
+    
+    try {
+      const privkey = hexToPrivkey(input);
+      const pubkey = getPublicKey(privkey);
+      
+      // Salvăm și actualizăm starea
+      await AsyncStorage.setItem('@orbit_v15_nostr_privkey', input);
+      setUserPrivkey(privkey);
+      setUserPubkey(pubkey);
+      setImportPrivateKeyInput('');
+      
+      Alert.alert('Success!', 'Private key imported. Syncing data...');
+    } catch (e) {
+      Alert.alert('Error', 'Failed to import key');
+    }
   };
 
   if (loading) return <View style={[styles.centered, {backgroundColor: theme.bg}]}><ActivityIndicator color={habitColors[0]} /></View>;
@@ -139,6 +288,67 @@ export default function App() {
               </TouchableOpacity>
             </View>
           </View>
+
+          <View style={[styles.settingsCard, {backgroundColor: theme.card, borderColor: theme.border}]}>
+            <View style={styles.cardHeader}><Text style={[styles.cardTitle, {color: theme.text}]}>Nostr Sync</Text></View>
+            <View style={[styles.modernInputRow, {borderTopColor: theme.border}]}>
+              <Text style={[styles.modernInput, {color: theme.text}]}>Enable Sync</Text>
+              <TouchableOpacity onPress={() => setEnableNostrSync(!enableNostrSync)} style={[styles.toggleButton, {backgroundColor: enableNostrSync ? habitColors[0] : theme.border}]}>
+                <Text style={styles.toggleText}>{enableNostrSync ? '✓' : ''}</Text>
+              </TouchableOpacity>
+            </View>
+            
+            {enableNostrSync && (
+              <>
+                <View style={[styles.modernInputRow, {borderTopColor: theme.border, flexDirection: 'column', alignItems: 'flex-start', paddingVertical: 8}]}>
+                  <Text style={[styles.keyLabel, {color: theme.subtext}]}>📖 Public Key</Text>
+                  <View style={[styles.keyDisplay, {backgroundColor: theme.bg, borderColor: theme.border}]}>
+                    <Text style={[styles.keyText, {color: theme.text}]}>{userPubkey}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => copyToClipboard(userPubkey)} style={[styles.copyBtn, {backgroundColor: habitColors[0]}]}>
+                    <Text style={styles.copyBtnText}>📋 Copy Public Key</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={[styles.dangerZone, {borderColor: theme.border, backgroundColor: theme.bg}]}>
+                  <Text style={[styles.dangerTitle, {color: '#ef4444'}]}>🔐 PRIVATE KEY</Text>
+                  <View style={[styles.modernInputRow, {borderTopColor: theme.border, flexDirection: 'column', alignItems: 'flex-start', paddingVertical: 8}]}>
+                    {!showPrivateKey ? (
+                      <View style={[styles.keyDisplay, {backgroundColor: theme.bg, borderColor: theme.border, justifyContent: 'center', alignItems: 'center'}]}>
+                        <Text style={[styles.keyText, {color: theme.subtext}]}>••••••••••••••••</Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.keyDisplay, {backgroundColor: theme.bg, borderColor: theme.border}]}>
+                        <Text style={[styles.keyText, {color: theme.text}]}>{privkeyToHex(userPrivkey)}</Text>
+                      </View>
+                    )}
+                    <View style={styles.keyButtonsRow}>
+                      <TouchableOpacity onPress={() => setShowPrivateKey(!showPrivateKey)} style={[styles.halfBtn, {backgroundColor: theme.border, marginRight: 6}]}>
+                        <Text style={styles.halfBtnText}>{showPrivateKey ? '🙈' : '👁️'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => copyToClipboard(privkeyToHex(userPrivkey))} style={[styles.halfBtn, {backgroundColor: habitColors[0]}]}>
+                        <Text style={styles.halfBtnText}>📋 Copy</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={[styles.modernInputRow, {borderTopColor: theme.border, flexDirection: 'column', alignItems: 'flex-start', paddingVertical: 8}]}>
+                    <TextInput 
+                      placeholder="Paste private key to import"
+                      placeholderTextColor={theme.subtext}
+                      value={importPrivateKeyInput}
+                      onChangeText={setImportPrivateKeyInput}
+                      style={[styles.importInput, {color: theme.text, borderColor: theme.border, backgroundColor: theme.bg}]}
+                    />
+                    <TouchableOpacity onPress={importPrivateKey} style={[styles.importBtn, {backgroundColor: '#10b981'}]}>
+                      <Text style={styles.importBtnText}>✓ Import & Sync</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
+
           {[{ t: "Daily Habits", d: dailyHabits, s: setDailyHabits }, { t: "Weekly Goals", d: weeklyHabits, s: setWeeklyHabits }, { t: "Monthly Milestones", d: monthlyHabits, s: setMonthlyHabits }].map((sec, i) => (
             <View key={i} style={[styles.settingsCard, {backgroundColor: theme.card, borderColor: theme.border}]}>
               <View style={styles.cardHeader}><Text style={[styles.cardTitle, {color: theme.text}]}>{sec.t}</Text><TouchableOpacity onPress={() => sec.s([...sec.d, ''])}><Text style={[styles.addIconText, {color: theme.subtext}]}>+</Text></TouchableOpacity></View>
@@ -155,6 +365,7 @@ export default function App() {
     );
   }
 
+  // --- RENDER MAIN TRACKER (Codul original de UI) ---
   return (
     <SafeAreaView style={[styles.safeArea, {backgroundColor: theme.bg}]}>
       <ScrollView contentContainerStyle={styles.trackerContainer}>
@@ -299,31 +510,15 @@ export default function App() {
   );
 }
 
+// --- STYLES ---
 const lightTheme = { bg: '#f9fafb', card: '#ffffff', text: '#111827', subtext: '#6b7280', border: '#e5e7eb' };
 const darkTheme = { bg: '#0b0f1a', card: '#161e2e', text: '#f3f4f6', subtext: '#9ca3af', border: '#2d3748' };
 
 const styles = StyleSheet.create({
-  safeArea: { 
-    flex: 1, 
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
-    backgroundColor: '#0b0f1a',
-  },
+  safeArea: { flex: 1, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0, backgroundColor: '#0b0f1a' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  trackerContainer: { 
-    padding: 16, 
-    alignItems: 'center',
-    paddingTop: 10, 
-  },
-  navBar: { 
-    width: '100%', 
-    maxWidth: 1200, 
-    flexDirection: 'row', 
-    justifyContent: 'flex-end', 
-    marginBottom: 10, 
-    gap: 10,
-    marginTop: 5, 
-    paddingHorizontal: 10,
-  },
+  trackerContainer: { padding: 16, alignItems: 'center', paddingTop: 10 },
+  navBar: { width: '100%', maxWidth: 1200, flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10, gap: 10, marginTop: 5, paddingHorizontal: 10 },
   themeToggle: { padding: 8, borderRadius: 8, backgroundColor: 'rgba(148,163,184,0.1)' },
   editButtonContainer: { padding: 8, borderRadius: 8, backgroundColor: 'rgba(148,163,184,0.1)' },
   navText: { color: habitColors[0], fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
@@ -360,7 +555,6 @@ const styles = StyleSheet.create({
   mobileDayNumText: { fontSize: 10, color: '#64748b' },
   mobileHabitRow: { flexDirection: 'row', height: 44, borderBottomWidth: 1 },
   mobileCell: { width: 36, height: '100%', borderRightWidth: 1 },
-  settingsSafe: { flex: 1 },
   settingsHeaderNav: { flexDirection: 'row', justifyContent: 'space-between', padding: 25, borderBottomWidth: 1, alignItems: 'center' },
   settingsHeaderTitle: { fontSize: 24, fontWeight: '900' },
   closeBtn: { backgroundColor: habitColors[0], paddingHorizontal: 22, paddingVertical: 12, borderRadius: 14 },
@@ -375,4 +569,17 @@ const styles = StyleSheet.create({
   deleteText: { fontSize: 18, color: '#ef4444', marginLeft: 15, fontWeight: '400' },
   toggleButton: { width: 44, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginLeft: 12 },
   toggleText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  keyLabel: { fontSize: 11, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  keyDisplay: { width: '100%', borderRadius: 8, borderWidth: 1, padding: 12, marginBottom: 12 },
+  keyText: { fontSize: 11, fontFamily: 'monospace', lineHeight: 16 },
+  copyBtn: { width: '100%', paddingVertical: 10, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  copyBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
+  dangerZone: { borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 12 },
+  dangerTitle: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 },
+  keyButtonsRow: { flexDirection: 'row', width: '100%', gap: 0 },
+  halfBtn: { flex: 1, paddingVertical: 8, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
+  halfBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
+  importInput: { width: '100%', borderRadius: 8, borderWidth: 1, padding: 10, marginVertical: 10, fontFamily: 'monospace', fontSize: 11 },
+  importBtn: { width: '100%', paddingVertical: 10, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginTop: 8 },
+  importBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
 });
