@@ -1,9 +1,7 @@
-# 🪐 Orbit Habit Tracker
+# 🪐 Circilar Habit Tracker
 
-**Orbit** is a minimalist and secure habit tracker built with **React Native**. It leverages the **Nostr** protocol to synchronize your data across devices in a decentralized and fully encrypted manner.
+**Habits** is a minimalist and secure habit tracker built with **React Native**. It leverages the **Nostr** protocol to synchronize your data across devices in a decentralized and fully encrypted manner.
 
-
-*Placeholder for your main application screenshot*
 
 ---
 
@@ -27,7 +25,7 @@
 
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/user/orbit-habit-tracker.git](https://github.com/user/orbit-habit-tracker.git)
+   git clone [https://github.com/avra911/Habit-Tracker-App](https://github.com/avra911/Habit-Tracker-App)
    ```
 2. Install dependencies:
    ```bash
