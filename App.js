@@ -287,7 +287,7 @@ export default function App() {
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={styles.pageContent}>
             <View style={styles.pageHeader}>
-              <View><Text style={[styles.mainTitle, { color: theme.text }]}>Orbit</Text><View style={[styles.titleUnderline, { backgroundColor: habitColors[0] }]} /></View>
+              <View><Text style={[styles.mainTitle, { color: theme.text }]}>Habits</Text><View style={[styles.titleUnderline, { backgroundColor: habitColors[0] }]} /></View>
               <View style={styles.monthSelector}>
                 <TouchableOpacity onPress={() => changeMonth(-1)}><Text style={styles.arrowText}>←</Text></TouchableOpacity>
                 <Text style={[styles.monthDisplay, { color: theme.text }]}>{monthLabel}</Text>
