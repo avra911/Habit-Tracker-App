@@ -477,6 +477,9 @@ export default function App() {
             </View>
           ))}
         </ScrollView>
+        <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+          <Text style={{ color: theme.subtext, fontSize: 12 }}>Created with ❤️ for the Nostr community. Built in the EU.</Text>
+        </View>
       </SafeAreaView>
     );
   };
@@ -700,6 +703,9 @@ export default function App() {
             </View>
           </View>
         </ScrollView>
+        <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+          <Text style={{ color: theme.subtext, fontSize: 12 }}>Created with ❤️ for the Nostr community. Built in the EU.</Text>
+        </View>
       </SafeAreaView>
     );
   };

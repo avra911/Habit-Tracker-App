@@ -47,4 +47,4 @@
 The app uses **NIP-04** asymmetric encryption to ensure that only you can read the data sent to Nostr relays. No third-party server ever sees your habits or your private keys.
 
 ---
-Created with ❤️ for the Nostr community.
+Created with ❤️ for the Nostr community. Built in the EU.
