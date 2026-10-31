@@ -28,7 +28,6 @@ const STORAGE_KEYS = {
 
 const RELAYS = [
   'wss://nos.lol',
-  'wss://relay.damus.io',
   'wss://relay.nostr.band'
 ];
 
@@ -490,7 +489,7 @@ export default function App() {
 
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
-        <ScrollView contentContainerStyle={styles.trackerContainer}>
+        <ScrollView contentContainerStyle={[styles.trackerContainer, width < 400 && { paddingHorizontal: 8 }]}>
           
           {/* Top Navigation */}
           <View style={styles.navBar}>
@@ -631,35 +630,36 @@ export default function App() {
                 </View>
 
                 {/* BOTTOM GRIDS: WEEKLY & MONTHLY */}
-                <View style={styles.bottomGridsColumn}>
+                <View style={[styles.bottomGridsColumn, !isDesktop && { flexDirection: 'column', flexWrap: 'nowrap', gap: 24 }]}>
                   
                   {/* Weekly Goals */}
-                  <View style={styles.gridSection}>
-                    <View style={[styles.singleHeaderRow, { borderBottomColor: theme.border }]}>
-                      <Text style={styles.smallHeading}>Weekly Goals</Text>
-                      <View style={styles.headerWeekNums}>
+                  <View style={[styles.gridSection, !isDesktop && { flex: 0, flexBasis: 'auto', flexShrink: 0, width: '100%', minWidth: 0 }]}>
+                    <View style={[styles.singleHeaderRow, { borderBottomColor: theme.border }, width < 400 && { flexDirection: 'column', alignItems: 'flex-start', gap: 8 }]}>
+                      <Text style={[styles.smallHeading, width < 400 && { fontSize: 10, letterSpacing: 1 }]}>Weekly Goals</Text>
+                      <View style={[styles.headerWeekNums, width < 400 && { width: '100%', justifyContent: 'flex-end', marginLeft: 0 }]}>
                         {Array.from({ length: weeksCount }).map((_, i) => (
-                          <Text key={i} style={styles.weekLabel}>W{i + 1}</Text>
+                          <Text key={i} style={[styles.weekLabel, width < 400 && { width: width < 300 ? 20 : 24, marginLeft: width < 300 ? 0 : 2, fontSize: 10 }]}>W{i + 1}</Text>
                         ))}
                       </View>
                     </View>
                     <View style={styles.gridBody}>
                       {weeklyHabits.map((h, hIdx) => (
-                        <View key={hIdx} style={[styles.tableRow, { borderBottomColor: theme.border }]}>
+                        <View key={hIdx} style={[styles.tableRow, { borderBottomColor: theme.border }, width < 400 && { height: 'auto', flexDirection: 'column', alignItems: 'stretch', gap: 6, paddingVertical: 8 }]}>
                           <TextInput 
                             value={h} 
                             onChangeText={(t) => { let c = [...weeklyHabits]; c[hIdx] = t; setWeeklyHabits(c); }} 
-                            style={[styles.tableInput, { color: theme.text }]} 
+                            style={[styles.tableInput, width < 400 && { flex: 0, width: '100%', minWidth: 0 }, { color: theme.text }]}
                             placeholder="Goal..." 
                             placeholderTextColor={theme.subtext} 
                           />
-                          <View style={styles.rowCells}>
+                          <View style={[styles.rowCells, width < 400 && { width: '100%', justifyContent: 'flex-end' }]}>
                             {Array.from({ length: weeksCount }).map((_, w) => (
                               <TouchableOpacity 
                                 key={w} 
                                 onPress={() => updateHistory('weekly', `${w}-${hIdx}`, !currentMonthData.weekly[`${w}-${hIdx}`])} 
                                 style={[
-                                  styles.cell, 
+                                  styles.cell,
+                                  width < 400 && { width: width < 300 ? 20 : 24, height: 28, marginLeft: width < 300 ? 0 : 2 },
                                   { borderColor: theme.border, backgroundColor: currentMonthData.weekly[`${w}-${hIdx}`] ? COLORS.habits[hIdx % 10] : theme.bg }
                                 ]} 
                               />
@@ -671,7 +671,7 @@ export default function App() {
                   </View>
 
                   {/* Monthly Milestones */}
-                  <View style={styles.gridSection}>
+                  <View style={[styles.gridSection, !isDesktop && { flex: 0, flexBasis: 'auto', flexShrink: 0, width: '100%', minWidth: 0 }]}>
                     <View style={[styles.singleHeaderRow, { borderBottomColor: theme.border }]}>
                       <Text style={styles.smallHeading}>Monthly Milestones</Text>
                     </View>
@@ -681,7 +681,7 @@ export default function App() {
                           <TextInput 
                             value={h} 
                             onChangeText={(t) => { let c = [...monthlyHabits]; c[hIdx] = t; setMonthlyHabits(c); }} 
-                            style={[styles.tableInput, { color: theme.text }]} 
+                            style={[styles.tableInput, !isDesktop && { minWidth: 0 }, { color: theme.text }]}
                             placeholder="Milestone..." 
                             placeholderTextColor={theme.subtext} 
                           />
